@@ -1,0 +1,16 @@
+{
+    "name": "grassserver",
+    "version": "0.0.1",
+    "description": "An MCPE server written in Javascript",
+    "author": "Datahihi1",
+    "main": "main.js",
+    "bin": {
+        "grassserver": "bin/grassserver"
+    },
+    "dependencies": {
+        "bytebuffer": "*"
+    },
+    "preferGlobal": true,
+    "private": true,
+    "license": "MIT"
+}
