@@ -57,13 +57,17 @@ Player.prototype.handlePackets = function(e) {
         }
     }
     for(var i = 0; i < packets.length; i++){
+        if(!packets[i].buffer || !packets[i].buffer.buffer || packets[i].buffer.buffer.length === 0){
+            console.log("Skipping empty packet " + i);
+            continue;
+        }
         this.handlePacket(packets[i]);
     }
 };
 Player.prototype.handlePacket = function(pk){
     pk.buffer.offset = 0;
     var pkid = pk.buffer.readByte();
-    
+
     console.log("Handling packet ID: 0x" + pkid.toString(16) + " (" + pkid + "), state: " + this.state);
     
     switch(pkid){

@@ -1,5 +1,5 @@
 UNCONNECTED_PONG = function(pingID){
-    this.name = "MCPE;GrassServer - Minecraft PE Server;34;0.12.1;0;500;1234567890;";
+    this.name = "MCPE;GrassServer - Minecraft PE Server;34;0.12.3;0;500;1234567890;";
     this.bb = new ByteBuffer();
     this.pingID = pingID;
     this.bb.buffer[0] = raknet.UNCONNECTED_PONG;

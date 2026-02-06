@@ -15,7 +15,9 @@ EncapsulatedPacket.prototype.decode = function(){
     this.id = this.bb.readByte();
     this.bb.reset();
     this.bb.buffer[0] = 0x00;
-    this.sequencenumber = this.bb.readUint32();
+    this.sequencenumber = EncapsulatedPacket.readLTriad(this.bb.buffer, 1);
+    this.bb.offset = 1;
+    this.bb.skip(3);
 
     while(this.bb.remaining() > 0){
         var pk = new InternalPacket();
@@ -94,6 +96,6 @@ EncapsulatedPacket.write = function(x, length, reverse){
 EncapsulatedPacket.writeLTriad = function(data){
     var buf = new ByteBuffer;
     buf.writeUint32(data);
-    return buf.copy(1, 4);
+    return buf.copy(0, 3);
 };
 console.log("EncapsulatedPacket.js loaded");
