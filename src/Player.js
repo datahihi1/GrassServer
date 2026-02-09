@@ -57,20 +57,44 @@ Player.prototype.handlePackets = function(e) {
         }
     }
     for(var i = 0; i < packets.length; i++){
-        if(!packets[i].buffer || !packets[i].buffer.buffer || packets[i].buffer.buffer.length === 0){
-            console.log("Skipping empty packet " + i);
-            continue;
-        }
         this.handlePacket(packets[i]);
     }
 };
 Player.prototype.handlePacket = function(pk){
+    if(!pk || !pk.buffer){
+        console.log("handlePacket: received invalid internal packet (no buffer), state: " + this.state);
+        return;
+    }
+
     pk.buffer.offset = 0;
+
+    if(pk.buffer.remaining() <= 0){
+        console.log("handlePacket: empty buffer, state: " + this.state);
+        return;
+    }
+
     var pkid = pk.buffer.readByte();
 
+    if(pkid === undefined || pkid === null){
+        console.log("handlePacket: could not read packet ID, state: " + this.state);
+        return;
+    }
+
     console.log("Handling packet ID: 0x" + pkid.toString(16) + " (" + pkid + "), state: " + this.state);
-    
+
     switch(pkid){
+        case minecraft.PING:
+            if (pk.buffer.remaining() >= 8) {
+                pk.buffer.offset = 1;
+                var ident = pk.buffer.readLong();
+                var pong = new PongPacket(ident);
+                this.sendPacket(pong, true);
+                console.log("Handled PING, sent PONG with identifier=" + ident);
+            } else {
+                console.log("PING packet too short, ignoring");
+            }
+            break;
+
         case minecraft.CONNECTION_REQUEST:
         case minecraft.CLIENT_CONNECT:
             if(this.state === "HANDSHAKE"){
