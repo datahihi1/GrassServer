@@ -1,15 +1,30 @@
 console.log("Loading modules...");
 fs = require('fs');
+const fsp = fs.promises;
+const path = require('path');
+const { pathToFileURL } = require('url');
 ByteBuffer = require('bytebuffer');
 dgram = require("dgram");
 ByteBuffer.DEFAULT_NOASSERT = true;
-var walk = function(dir) {
-    var list = fs.readdirSync(dir);
-    list.forEach(function(file) {
-        file = dir + '/' + file;
-        var stat = fs.statSync(file);
-        if (stat && stat.isDirectory()) walk(file);
-        else require(file);
-    });
+
+async function walk(dir) {
+    const list = await fsp.readdir(dir);
+    for (const name of list) {
+        const file = path.join(dir, name);
+        const stat = await fsp.stat(file);
+        if (stat && stat.isDirectory()) {
+            await walk(file);
+        } else {
+            await import(pathToFileURL(file).href);
+        }
+    }
 }
-walk(__dirname + "/src");
+
+module.exports = (async () => {
+    try {
+        await walk(path.join(__dirname, 'src'));
+    } catch (err) {
+        console.error('Error loading modules:', err);
+        throw err;
+    }
+})();
