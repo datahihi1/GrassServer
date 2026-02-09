@@ -47,15 +47,33 @@ Player.prototype.update = function(player) {
 };
 Player.prototype.handlePackets = function(e) {
     var packets = e.packets;
-    if(e.sequencenumber - this.lastSequenceNumber == 1){
+
+    // Handle sequence tracking properly
+    if(this.lastSequenceNumber === 0){
+        // First packet
         this.lastSequenceNumber = e.sequencenumber;
-        console.log("Correct sequence.");
+        console.log("First sequence: " + e.sequencenumber);
+    }
+    else if(e.sequencenumber == this.lastSequenceNumber + 1){
+        this.lastSequenceNumber = e.sequencenumber;
+        console.log("Correct sequence: " + e.sequencenumber);
+    }
+    else if(e.sequencenumber > this.lastSequenceNumber + 1){
+        // Missing packets - add to NACK queue
+        console.log("Missing sequences detected: " + (this.lastSequenceNumber + 1) + " to " + (e.sequencenumber - 1));
+        for(var i = this.lastSequenceNumber + 1; i < e.sequencenumber; i++){
+            if(this.NACKQueue.indexOf(i) === -1){
+                this.NACKQueue.push(i);
+            }
+        }
+        this.lastSequenceNumber = e.sequencenumber;
     }
     else{
-        for(var i = this.lastSequenceNumber; i < e.sequencenumber; i++){
-            this.NACKQueue.push(i);
-        }
+        // Old/duplicate packet - should have been filtered by SocketHandler
+        console.log("Old/duplicate sequence: " + e.sequencenumber + " (current: " + this.lastSequenceNumber + ")");
+        return;
     }
+
     for(var i = 0; i < packets.length; i++){
         this.handlePacket(packets[i]);
     }
@@ -184,9 +202,15 @@ Player.prototype.handlePacket = function(pk){
                 pk.buffer.offset = 0;
                 var move = new MovePlayerPacket(pk.buffer.copy());
                 move.decode();
+                console.log("Player moved to: " + move.x + ", " + move.y + ", " + move.z);
             }
             break;
-            
+
+        case minecraft.DISCONNECT:
+            console.log("Player " + this.username + " disconnecting gracefully");
+            this.close("Player disconnected");
+            break;
+
         case minecraft.REQUEST_CHUNK_RADIUS:
             if(this.state === "GAME"){
                 pk.buffer.offset = 0;
@@ -216,11 +240,27 @@ Player.prototype.handlePacket = function(pk){
     }
 };
 Player.prototype.close = function (msg){
-    if(msg !== null){
-        this.sendMessage(msg);
+    console.log("Closing player connection: " + (msg || "no reason"));
+
+    // Clear the update task
+    if(this.updateTask){
+        clearInterval(this.updateTask);
+        this.updateTask = null;
     }
+
+    // Send disconnect packet
     var d = new Disconnect();
-    console.log("Client disconnected.");
+    d.encode();
+    this.sendPacket(d, true);
+
+    // Remove from players list
+    if(typeof SocketInstance !== 'undefined' && SocketInstance && SocketInstance.server && SocketInstance.server.players){
+        var idx = SocketInstance.server.players.indexOf(this);
+        if(idx !== -1){
+            SocketInstance.server.players.splice(idx, 1);
+            console.log("Player removed from server (remaining: " + SocketInstance.server.players.length + ")");
+        }
+    }
 };
 Player.prototype.sendPacket = function(pk, immediate){
     pk.encode();

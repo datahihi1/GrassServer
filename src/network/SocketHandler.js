@@ -67,16 +67,19 @@ SocketHandler = function (port){
                     var e = new EncapsulatedPacket(buf);
                     e.decode();
                     console.log("  Found player! Sequence: " + e.sequencenumber + ", packets: " + e.packets.length);
+
+                    // Check if this is a duplicate/old sequence
+                    if(e.sequencenumber <= this.players[i].lastSequenceNumber && this.players[i].lastSequenceNumber !== 0){
+                        console.log("  Duplicate/old sequence " + e.sequencenumber + " (last: " + this.players[i].lastSequenceNumber + "), ignoring");
+                        return;
+                    }
+
                     this.players[i].handlePackets(e);
 
-                    var ackBuf = new ByteBuffer();
-                    ackBuf.writeByte(raknet.ACK);
-                    ackBuf.writeShort(1);
-                    ackBuf.writeByte(e.sequencenumber & 0xFF);
-                    ackBuf.writeByte((e.sequencenumber >> 8) & 0xFF);
-                    ackBuf.writeByte((e.sequencenumber >> 16) & 0xFF);
-                    ackBuf.flip();
-                    this.send(ackBuf.buffer, 0, ackBuf.buffer.length, rinfo.port, rinfo.address);
+                    // Use the ACK class instead of manual construction
+                    var ack = new ACK([e.sequencenumber]);
+                    ack.encode();
+                    this.send(ack.bb.buffer, 0, ack.bb.buffer.length, rinfo.port, rinfo.address);
                     console.log("  Sent ACK for sequence " + e.sequencenumber);
                     found = true;
                     return;
@@ -91,16 +94,19 @@ SocketHandler = function (port){
                         var e = new EncapsulatedPacket(buf);
                         e.decode();
                         console.log("  Found player by IP! Sequence: " + e.sequencenumber + ", packets: " + e.packets.length);
+
+                        // Check if this is a duplicate/old sequence
+                        if(e.sequencenumber <= this.players[i].lastSequenceNumber && this.players[i].lastSequenceNumber !== 0){
+                            console.log("  Duplicate/old sequence " + e.sequencenumber + " (last: " + this.players[i].lastSequenceNumber + "), ignoring");
+                            return;
+                        }
+
                         this.players[i].handlePackets(e);
 
-                        var ackBuf = new ByteBuffer();
-                        ackBuf.writeByte(raknet.ACK);
-                        ackBuf.writeShort(1);
-                        ackBuf.writeByte(e.sequencenumber & 0xFF);
-                        ackBuf.writeByte((e.sequencenumber >> 8) & 0xFF);
-                        ackBuf.writeByte((e.sequencenumber >> 16) & 0xFF);
-                        ackBuf.flip();
-                        this.send(ackBuf.buffer, 0, ackBuf.buffer.length, rinfo.port, rinfo.address);
+                        // Use the ACK class instead of manual construction
+                        var ack = new ACK([e.sequencenumber]);
+                        ack.encode();
+                        this.send(ack.bb.buffer, 0, ack.bb.buffer.length, rinfo.port, rinfo.address);
                         console.log("  Sent ACK for sequence " + e.sequencenumber);
                         return;
                     }
