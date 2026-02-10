@@ -98,6 +98,8 @@ Player.prototype.handlePacket = function(pk){
         return;
     }
 
+    pkid = pkid & 0xFF;
+
     console.log("Handling packet ID: 0x" + pkid.toString(16) + " (" + pkid + "), state: " + this.state);
 
     switch(pkid){
@@ -162,6 +164,10 @@ Player.prototype.handlePacket = function(pk){
                 nic.decode();
                 this.state = "LOGIN";
                 console.log("New incoming connection established, state -> LOGIN");
+
+                var serverHandshake = new ServerHandshakePacket(this.port, this.sendPing);
+                this.sendPacket(serverHandshake, true);
+                console.log("Sent SERVER_HANDSHAKE");
             } else {
                 console.log("Ignoring NEW_INCOMING_CONNECTION - wrong state: " + this.state);
             }
@@ -250,7 +256,6 @@ Player.prototype.close = function (msg){
 
     // Send disconnect packet
     var d = new Disconnect();
-    d.encode();
     this.sendPacket(d, true);
 
     // Remove from players list
@@ -264,7 +269,13 @@ Player.prototype.close = function (msg){
 };
 Player.prototype.sendPacket = function(pk, immediate){
     pk.encode();
-    console.log("Queuing packet: 0x" + pk.bb.buffer[0].toString(16) + " (" + pk.bb.buffer[0] + "), size: " + pk.bb.buffer.length);
+    var pkId = pk.bb.buffer[0];
+    if(pkId !== undefined && pkId !== null){
+        pkId = pkId & 0xFF;
+        console.log("Queuing packet: 0x" + pkId.toString(16) + " (" + pkId + "), size: " + pk.bb.buffer.length);
+    } else {
+        console.log("Queuing packet: (undefined), size: " + pk.bb.buffer.length);
+    }
     var internalPk = {
         bb: pk.bb,
         reliability: 2,
@@ -275,7 +286,8 @@ Player.prototype.sendPacket = function(pk, immediate){
     };
     this.packetQueue.packets.push(internalPk);
 
-    if(immediate || pk.bb.buffer[0] === minecraft.SERVER_HANDSHAKE || pk.bb.buffer[0] === minecraft.CONNECTION_REQUEST_ACCEPTED){
+    var pkIdCheck = (pk.bb.buffer[0] & 0xFF);
+    if(immediate || pkIdCheck === minecraft.SERVER_HANDSHAKE || pkIdCheck === minecraft.CONNECTION_REQUEST_ACCEPTED){
         this.flushPacketQueue();
     }
 };
