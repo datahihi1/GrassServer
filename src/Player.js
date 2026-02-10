@@ -47,38 +47,21 @@ Player.prototype.update = function(player) {
 };
 Player.prototype.handlePackets = function(e) {
     var packets = e.packets;
-
-    // Handle sequence tracking properly
-    if(this.lastSequenceNumber === 0){
-        // First packet
+    if(e.sequencenumber - this.lastSequenceNumber == 1){
         this.lastSequenceNumber = e.sequencenumber;
-        console.log("First sequence: " + e.sequencenumber);
-    }
-    else if(e.sequencenumber == this.lastSequenceNumber + 1){
-        this.lastSequenceNumber = e.sequencenumber;
-        console.log("Correct sequence: " + e.sequencenumber);
-    }
-    else if(e.sequencenumber > this.lastSequenceNumber + 1){
-        // Missing packets - add to NACK queue
-        console.log("Missing sequences detected: " + (this.lastSequenceNumber + 1) + " to " + (e.sequencenumber - 1));
-        for(var i = this.lastSequenceNumber + 1; i < e.sequencenumber; i++){
-            if(this.NACKQueue.indexOf(i) === -1){
-                this.NACKQueue.push(i);
-            }
-        }
-        this.lastSequenceNumber = e.sequencenumber;
+        console.log("Correct sequence.");
     }
     else{
-        // Old/duplicate packet - should have been filtered by SocketHandler
-        console.log("Old/duplicate sequence: " + e.sequencenumber + " (current: " + this.lastSequenceNumber + ")");
-        return;
+        for(var i = this.lastSequenceNumber; i < e.sequencenumber; i++){
+            this.NACKQueue.push(i);
+        }
     }
-
     for(var i = 0; i < packets.length; i++){
         this.handlePacket(packets[i]);
     }
 };
 Player.prototype.handlePacket = function(pk){
+    // Bảo vệ khỏi packet hỏng / thiếu buffer
     if(!pk || !pk.buffer){
         console.log("handlePacket: received invalid internal packet (no buffer), state: " + this.state);
         return;
@@ -98,12 +81,12 @@ Player.prototype.handlePacket = function(pk){
         return;
     }
 
-    pkid = pkid & 0xFF;
-
     console.log("Handling packet ID: 0x" + pkid.toString(16) + " (" + pkid + "), state: " + this.state);
 
     switch(pkid){
         case minecraft.PING:
+            // Ping/Pong trong quá trình login: client gửi 0x00 + identifier (long),
+            // server phải trả 0x03 + cùng identifier để client tiếp tục quy trình login.
             if (pk.buffer.remaining() >= 8) {
                 pk.buffer.offset = 1;
                 var ident = pk.buffer.readLong();
@@ -164,24 +147,31 @@ Player.prototype.handlePacket = function(pk){
                 nic.decode();
                 this.state = "LOGIN";
                 console.log("New incoming connection established, state -> LOGIN");
-
-                var serverHandshake = new ServerHandshakePacket(this.port, this.sendPing);
-                this.sendPacket(serverHandshake, true);
-                console.log("Sent SERVER_HANDSHAKE");
             } else {
                 console.log("Ignoring NEW_INCOMING_CONNECTION - wrong state: " + this.state);
             }
             break;
 
         case minecraft.LOGIN:
+        case 0x92: // Một số phiên bản PE dùng ID khác cho Login
             if(this.state === "LOGIN"){
                 pk.buffer.offset = 0;
-                var login = new LoginPacket(pk.buffer.copy());
-                login.decode();
+                var loginBuf = pk.buffer.copy();
+                loginBuf.offset = 0;
+
+                var login;
+                try{
+                    login = new LoginPacket(loginBuf);
+                    login.decode();
+                }catch(e){
+                    console.log("Failed to decode LoginPacket (id=0x" + pkid.toString(16) + "): " + e);
+                    break;
+                }
+
                 this.username = login.username;
                 this.uuid = login.uuid;
                 this.clientProtocol = login.protocol;
-                
+
                 console.log("Login packet received: username=" + this.username + ", protocol=" + login.protocol);
                 
                 if(minecraft.ACCEPTED_PROTOCOLS.indexOf(login.protocol) === -1){
@@ -208,15 +198,9 @@ Player.prototype.handlePacket = function(pk){
                 pk.buffer.offset = 0;
                 var move = new MovePlayerPacket(pk.buffer.copy());
                 move.decode();
-                console.log("Player moved to: " + move.x + ", " + move.y + ", " + move.z);
             }
             break;
-
-        case minecraft.DISCONNECT:
-            console.log("Player " + this.username + " disconnecting gracefully");
-            this.close("Player disconnected");
-            break;
-
+            
         case minecraft.REQUEST_CHUNK_RADIUS:
             if(this.state === "GAME"){
                 pk.buffer.offset = 0;
@@ -240,42 +224,24 @@ Player.prototype.handlePacket = function(pk){
             }
             break;
             
+        // Một số packet tầng RakNet / Bedrock cũ nhưng không cần xử lý:
+        // 0x00: Connected Ping, 0x03: Connected Pong, 0x15: Disconnect...
+        // Chúng ta chỉ log và bỏ qua để tránh spam/crash.
         default:
             console.log("Not implemented data packet " + pkid + " (0x" + pkid.toString(16) + "), state: " + this.state);
             break;
     }
 };
 Player.prototype.close = function (msg){
-    console.log("Closing player connection: " + (msg || "no reason"));
-
-    // Clear the update task
-    if(this.updateTask){
-        clearInterval(this.updateTask);
-        this.updateTask = null;
+    if(msg !== null){
+        this.sendMessage(msg);
     }
-
-    // Send disconnect packet
     var d = new Disconnect();
-    this.sendPacket(d, true);
-
-    // Remove from players list
-    if(typeof SocketInstance !== 'undefined' && SocketInstance && SocketInstance.server && SocketInstance.server.players){
-        var idx = SocketInstance.server.players.indexOf(this);
-        if(idx !== -1){
-            SocketInstance.server.players.splice(idx, 1);
-            console.log("Player removed from server (remaining: " + SocketInstance.server.players.length + ")");
-        }
-    }
+    console.log("Client disconnected.");
 };
 Player.prototype.sendPacket = function(pk, immediate){
     pk.encode();
-    var pkId = pk.bb.buffer[0];
-    if(pkId !== undefined && pkId !== null){
-        pkId = pkId & 0xFF;
-        console.log("Queuing packet: 0x" + pkId.toString(16) + " (" + pkId + "), size: " + pk.bb.buffer.length);
-    } else {
-        console.log("Queuing packet: (undefined), size: " + pk.bb.buffer.length);
-    }
+    console.log("Queuing packet: 0x" + pk.bb.buffer[0].toString(16) + " (" + pk.bb.buffer[0] + "), size: " + pk.bb.buffer.length);
     var internalPk = {
         bb: pk.bb,
         reliability: 2,
@@ -286,8 +252,7 @@ Player.prototype.sendPacket = function(pk, immediate){
     };
     this.packetQueue.packets.push(internalPk);
 
-    var pkIdCheck = (pk.bb.buffer[0] & 0xFF);
-    if(immediate || pkIdCheck === minecraft.SERVER_HANDSHAKE || pkIdCheck === minecraft.CONNECTION_REQUEST_ACCEPTED){
+    if(immediate || pk.bb.buffer[0] === minecraft.SERVER_HANDSHAKE || pk.bb.buffer[0] === minecraft.CONNECTION_REQUEST_ACCEPTED){
         this.flushPacketQueue();
     }
 };

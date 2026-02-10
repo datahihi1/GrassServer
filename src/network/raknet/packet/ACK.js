@@ -1,9 +1,11 @@
 ACK = function(bufOrSequences){
     if (bufOrSequences && bufOrSequences.buffer !== undefined) {
+        // Incoming ByteBuffer
         this.bb = bufOrSequences;
-        this.bb.offset = 1;
+        this.bb.offset = 1; // skip packet ID (0xC0)
         this.sequences = [];
     } else {
+        // Construct from an array of sequence numbers
         this.sequences = bufOrSequences || [];
         this.bb = new ByteBuffer();
         this.bb.buffer[0] = raknet.ACK;

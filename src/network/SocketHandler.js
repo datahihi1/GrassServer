@@ -1,4 +1,6 @@
 SocketHandler = function (port){
+    var config = require("../config.js");
+    this.config = config;
     this.server = dgram.createSocket("udp4");
     this.server.players = [];
     this.server.bind(port);
@@ -15,7 +17,7 @@ SocketHandler = function (port){
                 case raknet.UNCONNECTED_PING:
                     var u = new UNCONNECTED_PING(buf);
                     u.decode();
-                    var ad = new UNCONNECTED_PONG(u.pingID);
+                    var ad = new UNCONNECTED_PONG(u.pingID, this.players.length, config.server.maxPlayers);
                     ad.encode();
                     this.send(ad.bb.buffer, 0,ad.bb.buffer.length, rinfo.port, rinfo.address); //Send waiting data buffer
                     break;
@@ -24,7 +26,7 @@ SocketHandler = function (port){
                     r.decode();
                     console.log("OPEN_CONNECTION_REQUEST_1: protocol=" + r.protocol + ", mtuSize=" + r.mtusize + " from " + rinfo.address + ":" + rinfo.port);
                     if(raknet.ACCEPTED_RAKNET_PROTOCOLS.indexOf(r.protocol) === -1){
-                        console.log("INCOMPATIBLE_PROTOCOL_VERSION for " + rinfo.address + ":" + rinfo.port + " (protocol=" + r.protocol + ")");
+                        console.log("REJECTED: Client " + rinfo.address + ":" + rinfo.port + " uses RakNet protocol " + r.protocol + ", but server only supports " + raknet.ACCEPTED_RAKNET_PROTOCOLS.join(", ") + " (MCPE 0.12.1-0.12.3)");
                         var res = new INCOMPATIBLE_PROTOCOL_VERSION();
                         res.encode();
                         this.send(res.bb.buffer,0, res.bb.buffer.length, rinfo.port, rinfo.address);
@@ -40,12 +42,21 @@ SocketHandler = function (port){
                     var r = new OPEN_CONNECTION_REQUEST_2(buf);
                     r.decode();
                     console.log("OPEN_CONNECTION_REQUEST_2 from " + rinfo.address + ":" + rinfo.port + " (mtuSize=" + r.mtusize + ")");
+
+                    if(this.players.length >= config.server.maxPlayers){
+                        console.log("REJECTED: Server full (" + this.players.length + "/" + config.server.maxPlayers + ") - rejecting " + rinfo.address + ":" + rinfo.port);
+                        var disconnect = new Disconnect();
+                        disconnect.encode();
+                        this.send(disconnect.bb.buffer, 0, disconnect.bb.buffer.length, rinfo.port, rinfo.address);
+                        break;
+                    }
+
                     var res = new OPEN_CONNECTION_REPLY_2(rinfo.port, r.mtusize);
                     res.encode();
                     var p = new Player(rinfo.address, rinfo.port, r.mtusize);
                     if(!this.players.clientExists(p)){
                         this.players.push(p); //Add player to clients
-                        console.log("Added player ip=" + p.ip + " port=" + p.port + " mtuSize=" + p.mtuSize + " (total players=" + this.players.length + ")");
+                        console.log("Added player ip=" + p.ip + " port=" + p.port + " mtuSize=" + p.mtuSize + " (total players=" + this.players.length + "/" + config.server.maxPlayers + ")");
                         this.send(res.bb.buffer, 0, res.bb.buffer.length, rinfo.port, rinfo.address); //Send waiting data buffer
                         console.log("Sent OPEN_CONNECTION_REPLY_2 to " + rinfo.address + ":" + rinfo.port);
                     }
