@@ -184,7 +184,13 @@ Player.prototype.handlePacket = function(pk){
                 var playStatus = new PlayStatusPacket(PlayStatusPacket.LOGIN_SUCCESS);
                 this.sendPacket(playStatus);
                 console.log("Sent PLAY_STATUS (LOGIN_SUCCESS)");
-                
+
+                try{
+                    this.savePlayerInfo(login);
+                }catch (err){
+                    console.log("Failed to save player info: " + err);
+                }
+
                 this.startGame();
                 this.state = "GAME";
                 console.log("Player logged in: " + this.username + ", state -> GAME");
@@ -265,6 +271,52 @@ Player.prototype.flushPacketQueue = function(){
         SocketInstance.sendPacket(this.packetQueue, this.ip, this.port);
         this.recoveryQueue[this.packetQueue.sequencenumber] = this.packetQueue.packets;
         this.packetQueue.packets = [];
+    }
+};
+
+Player.prototype.savePlayerInfo = function(login){
+    var path = require('path');
+    var playersRoot = path.join(__dirname, '..', 'players');
+
+    try{
+        if (!fs.existsSync(playersRoot)){
+            fs.mkdirSync(playersRoot, { recursive: true });
+        }
+    }catch(e){
+        console.log("savePlayerInfo: failed to ensure players directory: " + e);
+        return;
+    }
+
+    var rawData = {};
+    try{
+        rawData = login.clientDataObj || {};
+    }catch(e){
+        rawData = {};
+    }
+
+    var baseId = this.uuid || this.username || (this.ip + '_' + this.port);
+    baseId = String(baseId);
+    var safeId = baseId.replace(/[^a-zA-Z0-9_\-]/g, '_');
+
+    var filePath = path.join(playersRoot, safeId + '.json');
+
+    var info = {
+        username: this.username,
+        uuid: this.uuid,
+        ip: this.ip,
+        port: this.port,
+        protocol: this.clientProtocol,
+        clientID: this.clientID,
+        sendPing: this.sendPing,
+        loginRaw: rawData,
+        firstSeenAt: new Date().toISOString()
+    };
+
+    try{
+        fs.writeFileSync(filePath, JSON.stringify(info, null, 2), 'utf8');
+        console.log("Saved player info to " + filePath);
+    }catch(e){
+        console.log("savePlayerInfo: failed to write file: " + e);
     }
 };
 
