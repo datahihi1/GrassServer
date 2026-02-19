@@ -16,7 +16,7 @@ This project is built on the foundation laid by [DirtServer](https://github.com/
 
 ## Todo List
 
-- [ ] Core World & Entities (world handling, entity management, world gen)
+- [ ] Core World & Entities (world handling, entity management, world generation)
 - [ ] Player Systems (connection, movement, inventory, auth)
 - [ ] Block Interaction (place/break, physics handling)
 - [x] Networking & Packets (ping/pong, packet handling, sync)

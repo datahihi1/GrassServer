@@ -7,8 +7,8 @@ var BLOCK_BEDROCK = 7;
  * Bedrock 3x3x1 ở tâm đáy chunk (x=7,8,9 z=7,8,9 y=0).
  */
 function buildSubChunkData() {
-    var blockIds = new Buffer(4096);
-    var blockData = new Buffer(2048);
+    var blockIds = Buffer.allocUnsafe(4096);
+    var blockData = Buffer.allocUnsafe(2048);
     blockIds.fill(0);
     blockData.fill(0);
     var bedrockCoords = [
